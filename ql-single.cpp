@@ -1,10 +1,9 @@
 /*
 Author: Shreshth Tuli
-Date:   30/07/2018
+Date:   13/8/2018
 
 This program functions as the "brain" of a reinforcement learning
-agent whose goal is to provide the optimal values of priorities
-of different processor groups for the Cache bandwidth allocation.
+agent whose goal is to provide the optimal state value
 */
 
 #include <iostream>
@@ -23,13 +22,13 @@ using namespace std;
 class RL
 {
 	// Number of state parameters
-	static const int num_params = 2;
+	static const int num_params = 1;
 
 	// Value range 1 to n
-	static const int range = 4;
+	static const int range = 8;
 
 	// State intialized with all values = 0
-	public : int state[num_params] = { 0 };
+	public : int state = 2;
 
 	// Number of states and actions
 	static const int num_states = int(pow(range, num_params));
@@ -62,7 +61,7 @@ class RL
 	int a = 0;
 	list<int>::iterator it;
 	int readDelay = 10;
-	float explorationMinutes = 0.1;
+	float explorationMinutes = 0.105;
 	float explorationConst = (explorationMinutes*60.0) / ((float(readDelay)) / 1000.0);  
 	//this is the approximate exploration time in units of number of times through the loop
 	int t = 0;
@@ -76,10 +75,8 @@ class RL
 		cout << "Number of states = " << num_states << endl;
 		cout << "Number of actions = " << num_actions << endl;
 
-		for (int i = 0; i < num_params; i++) {
-			s += (state[i] * int(pow(range, i)));
-		}
-
+		s = state;
+		
 		sPrime = s;
 
 	};
@@ -91,8 +88,7 @@ class RL
 		float val;
 		int aMax;
 		float randVal;
-		int allowedActions[num_actions] = { -1 };
-		allowedActions[0] = 1;
+		int allowedActions[3] = { 1, -1, -1 };
 
 		bool randomActionFound = false;
 
@@ -103,26 +99,24 @@ class RL
 			aMax = 0;
 		}
 
-		for (int i = 0; i < num_params; i++) {
-
-			if (state[i] + 1 < range) {
-				allowedActions[2 * i + 1] = 1;
-				val = Q[s][2 * i + 1];
-				if (val > valMax) {
-					valMax = val;
-					aMax = 2 * i + 1;
-				}
-			}
-
-			if (state[i] > 0) {
-				allowedActions[2 * i + 2] = 1;
-				val = Q[s][2 * i + 2];
-				if (val > valMax) {
-					valMax = val;
-					aMax = 2 * i + 2;
-				}
+		if (state + 1 < range) {
+			allowedActions[1] = 1;
+			val = Q[s][1];
+			if (val > valMax) {
+				valMax = val;
+				aMax = 1;
 			}
 		}
+
+		if (state > 0) {
+			allowedActions[2] = 1;
+			val = Q[s][2];
+			if (val > valMax) {
+				valMax = val;
+				aMax = 2;
+			}
+		}
+
 
 		// Implement epsilon greedy alogorithm
 		randVal = float(rand() % 101);
@@ -147,17 +141,14 @@ class RL
 			// NONE
 			sPrime = s;
 		}
-		else {
-			int power = (action - 1) / 2;
-			int absolute = int(pow(range, power));
-			if (action % 2 == 1) {
-				sPrime = s + absolute;
-				state[power] = state[power] + 1;
-			}
-			else {
-				sPrime = s - absolute;
-				state[power] = state[power] - 1;
-			}
+		else if (action == 1){
+			//theta1++
+			sPrime = s + 1;
+			state++;
+		}else if (action == 2){
+			//theta1--
+			sPrime = s - 1;
+			state--;
 		}
 	};
 
@@ -166,10 +157,10 @@ class RL
 	// Q learning algorithm 
 	
 	//Get the reward using the increase in performance since the last call
-	float getDeltaDistance(float ipc) {
-		distanceNew = ipc;
+	float getDeltaDistance(float performance) {
+		distanceNew = performance;
 
-		cout << "New performance : " << ipc << endl;
+		cout << "New performance : " << performance << endl;
 		deltaDistance = distanceNew - distanceOld;
 
 		distanceOld = distanceNew;
@@ -186,22 +177,20 @@ class RL
 			valMax = val;
 		}
 
-		for (int i = 0; i < num_params; i++) {
+		if((s + 1) < 8){
+		    val = Q[sPrime][1];
+		    if(val > valMax){
+		      valMax = val;
+		    }
+		  }
 
-			if (state[i] + 1 < range) {
-				val = Q[sPrime][2 * i + 1];
-				if (val > valMax) {
-					valMax = val;
-				}
-			}
+		if(s > 0){
+		    val = Q[sPrime][2];
+		    if(val > valMax){
+		      valMax = val;
+		    }
+		  }
 
-			if (state[i] > 0) {
-				val = Q[sPrime][2 * i + 2];
-				if (val > valMax) {
-					valMax = val;
-				}
-			}
-		}
 
 		return valMax;
 	}
@@ -240,15 +229,15 @@ class RL
 		Q[s][a] = Q[s][a] + alpha * (sample - Q[s][a]);
 		s = sPrime;
 
-		cout << "State : ";
-		for (int i = 0; i < num_params; i++) {
-			cout << state[i] << ", ";
-		}
-		cout << endl << endl;
+		cout << "State : " << state << endl;
+
+		cout << endl;
 
 		if (t == 2) {
 			initializeQ();
 		}
+
+		return a;
 
 		//printQ();
 	}
@@ -256,13 +245,15 @@ class RL
 
 };
 
+/*
 int main() {
 	RL test;
 	test.init();
 
 	int input;
-	while (test.epsilon > 0.0003) {
-		input = 100 - pow((test.state[0] - 1), 4) - pow((test.state[1] - 3), 4);
+	while (test.epsilon > 0.03) {
+		input = 100 - pow((test.state - 6), 2);
 		test.iterate(input);
 	}
 }
+*/
