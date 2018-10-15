@@ -19,7 +19,7 @@ For each module, you can specify the number of parameters and their range 0 to n
 Example: 
 ```
 QL test;
-```test.init();
+test.init();
 
 test.iterate(performance_value);
 ```
