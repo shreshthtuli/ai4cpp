@@ -1,28 +1,35 @@
 /*
-Author: Shreshth Tuli
-Date:   30/07/2018
+   Copyright 2018 Shreshth Tuli
 
-This program functions as the "brain" of a reinforcement learning
-agent whose goal is to provide the optimal state
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
 */
 
-#include <iostream>
 #include <random>
-#include <math.h>
-#include <string>
-#include <stdlib.h>
 #include <algorithm>
-#include <list>
-#include <limits>
-#include <cstdlib>
-#include <ctime>
+#include <cassert>
+#include <climits>
+#include <iosfwd>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <map>
+#include <math.h>
+#include <iostream>
 
-using namespace std;
-
-class RL
+class TD
 {
 	// Number of state parameters
-	static const int num_params = 2;
+	static const int num_params = 4;
 
 	// Value range 1 to n
 	static const int range = 4;
@@ -34,12 +41,12 @@ class RL
 	static const int num_states = int(pow(range, num_params));
 	static const int num_actions = 1 + (2 * num_params);
 
-	// Initialize Q
-	float Q[num_states][num_actions];
+	// Initialize V
+	float V[num_states];
 
 	//Computational parameters
-	float gamma_q = 0.4;      //look-ahead weight
-	float alpha = 0.90;        //"Forgetfulness" weight.  The closer this is to 1 the more weight is given to recent samples.
+	float gamma_q = 0.7;      //look-ahead weight
+	float alpha = 0.1;        //"Forgetfulness" weight.  The closer this is to 1 the more weight is given to recent samples.
 							   //A high value is kept because of a highly dynamic situation, we cannot keep it very high as then the system might not converge
 
 	//Parameters for getAction()
@@ -59,21 +66,21 @@ class RL
 	float lookAheadValue = 0.0;
 	float sample = 0.0;
 	int a = 0;
-	list<int>::iterator it;
 	int readDelay = 10;
-	float explorationMinutes = 0.1;
+	float explorationMinutes = 0.5;
 	float explorationConst = (explorationMinutes*60.0) / ((float(readDelay)) / 1000.0);  
 	//this is the approximate exploration time in units of number of times through the loop
 	int t = 0;
 
 	// State parameters in this->state array are 1 less of actual value
 
-	public: void init() {
+	public: 
+	TD(){
 
-		cout << "RL Module intialized with " << num_params << " parameters and range = " << range << endl;
+		std::cout << "RL Module intialized with " << num_params << " parameters and range = " << range << std::endl;
 
-		cout << "Number of states = " << num_states << endl;
-		cout << "Number of actions = " << num_actions << endl;
+		std::cout << "Number of states = " << num_states << std::endl;
+		std::cout << "Number of actions = " << num_actions << std::endl;
 
 		for (int i = 0; i < num_params; i++) {
 			s += (state[i] * int(pow(range, i)));
@@ -81,6 +88,25 @@ class RL
 
 		sPrime = s;
 
+	};
+
+	private: int getNextState(int action) {
+        int sp;
+		if (action == 0) {
+			// NONE
+			sp = s;
+		}
+		else {
+			int power = (action - 1) / 2;
+			int absolute = int(pow(range, power));
+			if (action % 2 == 1) {
+				sp = s + absolute;
+			}
+			else {
+				sp = s - absolute;
+			}
+		}
+        return sp;
 	};
 
 	// Returns action as 0, 1, 2, ... = NONE, theta1++, theta1--, theta2++, ...
@@ -96,7 +122,7 @@ class RL
 		bool randomActionFound = false;
 
 		// Find the optimal action, and exclude that take you outside the allowed state space
-		val = Q[s][0];
+		val = V[s];
 		if (val > valMax) {
 			valMax = val;
 			aMax = 0;
@@ -106,7 +132,7 @@ class RL
 
 			if (state[i] + 1 < range) {
 				allowedActions[2 * i + 1] = 1;
-				val = Q[s][2 * i + 1];
+				val = V[getNextState(2*i + 1)];
 				if (val > valMax) {
 					valMax = val;
 					aMax = 2 * i + 1;
@@ -115,7 +141,7 @@ class RL
 
 			if (state[i] > 0) {
 				allowedActions[2 * i + 2] = 1;
-				val = Q[s][2 * i + 2];
+				val = V[getNextState(2*i + 2)];
 				if (val > valMax) {
 					valMax = val;
 					aMax = 2 * i + 2;
@@ -162,13 +188,13 @@ class RL
 
 	// Distance here means performance, goal is to maximize distance
 	// by tuning the hyper parameters inside the performance function 
-	// Q learning algorithm 
+	// TD learning algorithm
 	
 	//Get the reward using the increase in performance since the last call
 	float getDeltaDistance(float ipc) {
 		distanceNew = ipc;
 
-		cout << "New performance : " << ipc << endl;
+		std::cerr << "New performance : " << ipc << std::endl;
 		deltaDistance = distanceNew - distanceOld;
 
 		distanceOld = distanceNew;
@@ -177,91 +203,50 @@ class RL
 
 	//Get max over a' of Q(s',a'), but be careful not to look at actions which take the agent outside of the allowed state space
 	float getLookAhead() {
-		float valMax = -100000.0;
-		float val;
-
-		val = Q[sPrime][0];
-		if (val > valMax) {
-			valMax = val;
-		}
-
-		for (int i = 0; i < num_params; i++) {
-
-			if (state[i] + 1 < range) {
-				val = Q[sPrime][2 * i + 1];
-				if (val > valMax) {
-					valMax = val;
-				}
-			}
-
-			if (state[i] > 0) {
-				val = Q[sPrime][2 * i + 2];
-				if (val > valMax) {
-					valMax = val;
-				}
-			}
-		}
-
-		return valMax;
+		return V[sPrime];
 	}
 
-	void initializeQ() {
+	void initializeV() {
 		for (int i = 0; i < num_states; i++) {
-			for (int j = 0; j < num_actions; j++) {
-				Q[i][j] = 10.0;               //Initialize to a positive number to represent optimism over all state-actions
-			}
+            V[i] = 0;
 		}
 	};
 
-	//print Q
-	void printQ() {
-		cout << "Q is: " << endl;
+	//print V
+	void printV() {
+		std::cout << "V is: " << std::endl;
 		for (int i = 0; i < num_states; i++) {
-			cout << i << "\t\t\t";
-			for (int j = 0; j < num_actions; j++) {
-				cout << Q[i][j] << "\t \t \t";
-			};
-			cout << endl;
+			std::cout << V[i] << "\t\t";
 		};
+        std::cout << std::endl;
 	};
 
-	public : int iterate(float ipc) {
+	public : int iterate(double ipc) {
 		t++;
-		cout << "Iteration number : " << t << endl;
-		epsilon = exp(-float(t) / explorationConst);
-		cout << "Epsilon: " << epsilon << endl;
+		std::cerr << "Iteration number : " << t << std::endl;
+		epsilon = 0.2; //exp(-float(t) / explorationConst);
+		std::cerr << "Epsilon: " << epsilon << std::endl;
 		a = getAction();
 		setSPrime(a);
-		cout << "Action : " << a << endl;
+		std::cout << "Action : " << a << std::endl;
 		r = getDeltaDistance(ipc);
 		lookAheadValue = getLookAhead();
 		sample = r + gamma_q * lookAheadValue;
-		Q[s][a] = Q[s][a] + alpha * (sample - Q[s][a]);
+		V[s] = V[s] + (alpha) * (sample - V[s]);
 		s = sPrime;
 
-		cout << "State : ";
+		std::cerr << "State : ";
 		for (int i = 0; i < num_params; i++) {
-			cout << state[i] << ", ";
+			std::cerr << state[i] << ", ";
 		}
-		cout << endl << endl;
+		std::cout << std::endl << std::endl;
 
-		if (t == 2) {
-			initializeQ();
+		if (t == 1) {
+			initializeV();
 		}
-
+		return 0;
 		//printQ();
 	}
 
 
 };
-
-int main() {
-	RL test;
-	test.init();
-
-	int input;
-	while (test.epsilon > 0.0003) {
-		input = 100 - pow((test.state[0] - 1), 4) - pow((test.state[1] - 3), 4);
-		test.iterate(input);
-	}
-}
