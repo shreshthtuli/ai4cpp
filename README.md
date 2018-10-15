@@ -24,7 +24,7 @@ test.init();
 test.iterate(performance_value);
 ```
 
-state values are stored as array : test.state[i] is the ith state parameter value for the current iteration.
+state values are stored in array : test.state[i] is the ith state parameter value for the current iteration.
 
 ## TODO
 
