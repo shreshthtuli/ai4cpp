@@ -11,7 +11,7 @@ Q Learning model based on epsilon-greedy approach
 SARSA based learning model based on epsilon-greedy approach
 
 ### 3. td4cpp
-Temporal Differemce learning module
+Temporal Difference learning module
 
 ## Usage
 For each module, you can specify the number of parameters and their range 0 to n.
